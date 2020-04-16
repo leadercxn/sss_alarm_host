@@ -1,0 +1,16 @@
+from building import *
+
+cwd     = GetCurrentDir()
+CPPPATH = [cwd, str(Dir('#'))]
+CPPPATH += [cwd + '/segger_rtt/RTT']
+
+src     = Split("""
+segger_rtt/RTT/SEGGER_RTT_printf.c
+segger_rtt/RTT/SEGGER_RTT.c
+segger_rtt/Syscalls/RTT_Syscalls_GCC.c
+""")
+
+group = DefineGroup('External', src, depend = [''], CPPPATH = CPPPATH)
+
+Return('group')
+

@@ -1,0 +1,38 @@
+import rtconfig
+from building import *
+
+cwd     = GetCurrentDir()
+CPPPATH = [cwd, str(Dir('#'))]
+CPPPATH += [cwd + '/hw_Periph']
+CPPPATH += [cwd + '/fun_handler']
+CPPPATH += [cwd + '/board_version']
+
+src     = Split("""
+main.c
+adc_battery.c
+timer3.c
+pwm.c
+i2s_dma.c
+uart2.c
+hw_Periph/w25qxx.c
+hw_Periph/tas2505.c
+hw_Periph/nb_hw_init.c
+hw_Periph/button_handler.c
+hw_Periph/lan8720_hw_init.c
+fun_handler/voice_handler.c
+fun_handler/nb_bc26_handler.c
+fun_handler/client_handler.c
+fun_handler/server_handler.c
+fun_handler/udp_handler.c
+fun_handler/file_sys_handler.c
+fun_handler/alpha_handler.c
+fun_handler/ec200_test_handler.c
+""")
+
+group = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH)
+
+Return('group')
+
+
+
+
