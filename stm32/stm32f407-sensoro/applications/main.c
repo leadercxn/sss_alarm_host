@@ -241,11 +241,11 @@ int main(void)
     if( RT_NULL != voice_thread_index )
     {
         //rt_thread_startup(voice_thread_index);
-        rt_kprintf("voice_thread_creat success \r\n ");
+        rt_kprintf("voice_thread_creat success \n");
     }
     else
     {
-        rt_kprintf("voice_thread_creat fail \r\n ");
+        rt_kprintf("voice_thread_creat fail \n");
     }
 
     button_thread_index = rt_thread_create(    "button_thread"     ,          //创建按键线程
@@ -257,11 +257,11 @@ int main(void)
     if( RT_NULL != button_thread_index )
     {
         rt_thread_startup(button_thread_index);                               //开启线程的调度
-        rt_kprintf("button_thread_creat success \r\n ");
+        rt_kprintf("button_thread_creat success \n");
     }
     else
     {
-        rt_kprintf("button_thread_creat fail \r\n ");
+        rt_kprintf("button_thread_creat fail \n");
     }
 
 #if( DEBUG_LWIP == 1)                                                                // 测试lwip_udp
