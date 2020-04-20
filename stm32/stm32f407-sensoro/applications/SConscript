@@ -5,6 +5,7 @@ cwd     = GetCurrentDir()
 CPPPATH = [cwd, str(Dir('#'))]
 CPPPATH += [cwd + '/hw_Periph']
 CPPPATH += [cwd + '/fun_handler']
+CPPPATH += [cwd + '/fun_handler/alpha_task']
 CPPPATH += [cwd + '/board_version']
 
 src     = Split("""
@@ -27,6 +28,8 @@ fun_handler/udp_handler.c
 fun_handler/file_sys_handler.c
 fun_handler/alpha_handler.c
 fun_handler/ec200_test_handler.c
+fun_handler/alpha_task/ser_alpha_data_handler.c
+fun_handler/alpha_task/alpha_tasks.c
 """)
 
 group = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH)

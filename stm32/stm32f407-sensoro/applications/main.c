@@ -7,25 +7,45 @@
 //#include <sockets.h>
 
 #include "voice_handler.h"
+#include "alpha_tasks.h"
+#include "ser_alpha_data_handler.h"
+#include "alpha_handler.h"
+
+
 #include <button.h>
 
 
 
 //#define USING_INTERRUPT                                   //
-#define USING_MUX  
-#define DEBUG_LWIP                        0                  //测试lwip_udp
+#define USING_MUX                         0  
+#define DEBUG_LWIP                        0                 //测试lwip_udp
 
+/******************************* 线程控制块 ******************************/
 static rt_thread_t voice_thread_index = RT_NULL ;
 static rt_thread_t init_thread_index = RT_NULL;
 static rt_thread_t button_thread_index = RT_NULL;
-
-
-
+static rt_thread_t open_lora_rx_thread_index = RT_NULL;
+static rt_thread_t open_lora_tx_thread_index = RT_NULL;
+static rt_thread_t uart3_rx_thread_index = RT_NULL;
+/******************************* 线程优先级 ******************************/
+#define VOICE_THREAD_PRIORTY            5 
+#define INIT_THREAD_PRIORTY             6
+#define BUTTON_THREAD_PRIORTY           6
+#define OPEN_LORA_RX_THREAD_PRIORTY     7
+#define OPEN_LORA_TX_THREAD_PRIORTY     8
+#define UART_RX_THREAD_PRIORTY          3
+#define UDP_TEST_THREAD_PRIORTY         4
+/******************************* 锁 ******************************/
 static rt_mutex_t m_my_mux = RT_NULL ;
 
-#define VOICE_THREAD_PRIORTY    5 
-#define INIT_THREAD_PRIORTY     6
-#define BUTTON_THREAD_PRIORTY   3
+
+
+
+
+
+
+
+
 
 
 
@@ -34,8 +54,13 @@ static rt_mutex_t m_my_mux = RT_NULL ;
  */
 static void voice_thread_entry(void *parameter)
 {
-    uint8_t voice_index = (uint8_t)parameter ;
+    if( NULL == parameter )
+    {
+        SEGGER_RTT_printf(0,"no voice index \n" );
+        return ;
+    }
 
+    rt_uint8_t voice_index = *(rt_uint8_t *)parameter ;
 #ifdef USING_INTERRUPT
 
     rt_base_t protect_level;
@@ -47,8 +72,8 @@ static void voice_thread_entry(void *parameter)
     rt_mutex_take( m_my_mux , RT_WAITING_FOREVER );             //获取互斥量
 #endif
 
-    SEGGER_RTT_printf(0,"voice_index = %d \r\n " , voice_index);
-//    play_voice_start( 0 );
+    SEGGER_RTT_printf(0,"voice_index = %d \r\n" , voice_index);
+    play_voice_start( voice_index );
 
 #ifdef USING_MUX
     rt_mutex_release(m_my_mux);                                 //释放互斥量
@@ -60,7 +85,7 @@ static void voice_thread_entry(void *parameter)
 
     if( RT_EOK == rt_thread_delete( init_thread_index ) )
     {
-        rt_kprintf("init_thread delete success \r\n ");
+        rt_kprintf("init_thread delete success \r\n");
     }
 
     SEGGER_RTT_printf(0,"play_voice finish \r\n"); 
@@ -71,10 +96,7 @@ static void voice_thread_entry(void *parameter)
  */
 static void init_thread_entry(void *parameter)
 {
-    SEGGER_RTT_printf(0,"voice_handler_init start \r\n");
     voice_handler_init();
-    SEGGER_RTT_printf(0,"voice_handler_init finish \r\n");
-
     rt_thread_startup(voice_thread_index);                          //初始化完成voice模块才开始播放语音
 }
 
@@ -91,15 +113,11 @@ static void button_thread_entry(void *parameter)
 }
 
 
-#if( DEBUG_LWIP == 1 )                                                                                       // 测试lwip_udp
+#if( DEBUG_LWIP == 1 )                                             // 测试lwip_udp
 
 #define BUFSZ       1024
-#define SER_PORT    5000
-
+#define SER_PORT    5000                                           // 端口号     
 static rt_thread_t udp_test_thread_index = RT_NULL;
-
-#define UDP_TEST_THREAD_PRIORTY    4
-
 /**
  * @brief udp测试线程
  */
@@ -177,70 +195,38 @@ void udpserv_thread_entry(void *parameter)
  */
 int main(void)
 {
+    //static rt_uint8_t void_index = 0 ;
 
-#if  0                                              //简单的led测试
-    #define LED0_PIN    GET_PIN(E, 0)               /* defined the LED0 pin: PB1 */
-    #define LED1_PIN    GET_PIN(E, 1)
-
-    int count = 1;
-    uint16_t fnt = 0 ;
-    rt_pin_mode(LED0_PIN, PIN_MODE_OUTPUT);         /* set LED0 pin mode to output */
-    rt_pin_mode(LED1_PIN, PIN_MODE_OUTPUT);
-
-    while (count++)
-    {
-        rt_pin_write(LED0_PIN, PIN_HIGH);
-        rt_pin_write(LED1_PIN, PIN_LOW);
-        rt_thread_mdelay(500);
-        rt_pin_write(LED0_PIN, PIN_LOW);
-        rt_pin_write(LED1_PIN, PIN_HIGH);
-        rt_thread_mdelay(500);
-    }
+#if USING_MUX
+    /* 创建一个互斥锁 */
+    m_my_mux = rt_mutex_create( "my_mux " , RT_IPC_FLAG_PRIO ) ; 
 #endif
-
-#if 0                                               //语音模块
-    voice_handler_init();
-    SEGGER_RTT_printf(0,"rvoice handler finish \r\n");
-
-    SEGGER_RTT_printf(0," start  loop  \r\n" );
-    while(1)
-    {
-        play_voice_start( 0 );
-        rt_thread_mdelay(3000);
-        play_voice_start( 1 );
-        rt_thread_mdelay(3000);
-        SEGGER_RTT_printf(0," finish once  \r\n" );
-    }
-    
-#endif 
-
-    m_my_mux = rt_mutex_create( "my_mux " , RT_IPC_FLAG_PRIO ) ;             //创建一个互斥锁
-
-    init_thread_index = rt_thread_create(    "init_thread"     ,            //创建初始化线程
+    /* 创建初始化线程 */
+    init_thread_index = rt_thread_create(    "init_thread"    ,             
                                             init_thread_entry ,
                                             RT_NULL ,
                                             4096 ,
-                                            6,
+                                            INIT_THREAD_PRIORTY,
                                             20 );
     if( RT_NULL != init_thread_index )
     {
         rt_thread_startup(init_thread_index);
-        rt_kprintf("init_thread_creat success \r\n ");
+        rt_kprintf("init_thread_creat success \n");
     }
     else
     {
-        rt_kprintf("init_thread_creat fail \r\n ");
+        rt_kprintf("init_thread_creat fail \n");
     }
-    
-    voice_thread_index = rt_thread_create(    "voice_thread"     ,          //创建语音播放线程
+
+    /* 创建语音播放线程 */
+    voice_thread_index = rt_thread_create(  "voice_thread"     ,            
                                             voice_thread_entry ,
-                                            RT_NULL ,
+                                            RT_NULL,
                                             4096 ,
-                                            5,
+                                            VOICE_THREAD_PRIORTY,
                                             20 );
     if( RT_NULL != voice_thread_index )
     {
-        //rt_thread_startup(voice_thread_index);
         rt_kprintf("voice_thread_creat success \n");
     }
     else
@@ -248,7 +234,8 @@ int main(void)
         rt_kprintf("voice_thread_creat fail \n");
     }
 
-    button_thread_index = rt_thread_create(    "button_thread"     ,          //创建按键线程
+    /* 创建按键线程 */
+    button_thread_index = rt_thread_create(    "button_thread"     ,        
                                             button_thread_entry ,
                                             RT_NULL ,
                                             512 ,
@@ -256,17 +243,98 @@ int main(void)
                                             5 );
     if( RT_NULL != button_thread_index )
     {
-        rt_thread_startup(button_thread_index);                               //开启线程的调度
+        rt_thread_startup(button_thread_index);                             //开启线程的调度
         rt_kprintf("button_thread_creat success \n");
     }
     else
     {
         rt_kprintf("button_thread_creat fail \n");
     }
+   
+    /* 创建串口3接收的线程 */
+    uart3_rx_thread_index = rt_thread_create( "alpha_thread",                              
+                                                    uart3_rx_thread_entry ,
+                                                    RT_NULL,
+                                                    512 ,
+                                                    UART_RX_THREAD_PRIORTY,
+                                                    20);
+    if( RT_NULL != uart3_rx_thread_index )
+    {
+        rt_thread_startup(uart3_rx_thread_index);
+        rt_kprintf("uart3_rx_thread_creat success \n");
+    }
+    else
+    {
+        rt_kprintf("uart3_rx_thread_creat fail \n");
+    }
 
-#if( DEBUG_LWIP == 1)                                                                // 测试lwip_udp
+    /* 打开lora接收 */
+    static ser_alpha_open_rx_param_t ser_alpha_open_rx_param ;
+    ser_alpha_open_rx_param.freq = 433 ;
+    ser_alpha_open_rx_param.bandwidth = 0 ; 
+    ser_alpha_open_rx_param.daterate = 7 ; 
+    ser_alpha_open_rx_param.coderate = 4 ; 
+    ser_alpha_open_rx_param.preamblelen = 8 ; 
+    ser_alpha_open_rx_param.symbtimeout = 100 ; 
+    ser_alpha_open_rx_param.crcon = true ;
+    ser_alpha_open_rx_param.iqinverted = false ;
+    open_lora_rx_thread_index = rt_thread_create(    "open_lora_rx_thread"   ,      
+                                            open_lora_rx_entry ,
+                                            &ser_alpha_open_rx_param ,
+                                            512 ,
+                                            OPEN_LORA_RX_THREAD_PRIORTY,
+                                            20 );
+    if( RT_NULL != open_lora_rx_thread_index )
+    {
+        rt_thread_startup(open_lora_rx_thread_index);
+        rt_kprintf("open_lora_rx_thread_creat success \n");
+    }
+    else
+    {
+        rt_kprintf("open_lora_rx_thread_creat fail \n");
+    }
 
-    udp_test_thread_index = rt_thread_create(    "udp_test_thread"     ,        // 创建lwip_udp线程
+    /* 打开lora发送 */
+    static rt_uint8_t tx_buf[]={ 0x01 , 0x02 ,0x03 ,0x04 ,0x05 ,0x06 ,0x07 ,0x08 ,0x09 ,0x0A };
+    static ser_alpha_open_tx_param_t  ser_alpha_open_tx_param ;
+    ser_alpha_open_tx_param.freq = 434 ;
+    ser_alpha_open_tx_param.power = 0 ;
+    ser_alpha_open_tx_param.bandwidth = 1 ;
+    ser_alpha_open_tx_param.daterate = 6 ;
+    ser_alpha_open_tx_param.coderate = 3 ;
+    ser_alpha_open_tx_param.preamblelen =  8 ;
+    ser_alpha_open_tx_param.crcon =  true ;
+    ser_alpha_open_tx_param.iqinverted = false ;
+    ser_alpha_open_tx_param.timeout = 2000 ;
+    ser_alpha_open_tx_param.tx_data_len = sizeof(tx_buf);
+    ser_alpha_open_tx_param.tx_data = tx_buf;
+    open_lora_tx_thread_index = rt_thread_create(    "open_lora_tx_thread"   ,      
+                                            open_lora_tx_entry ,
+                                            &ser_alpha_open_tx_param ,
+                                            512 ,
+                                            OPEN_LORA_TX_THREAD_PRIORTY,
+                                            20 );
+    if( RT_NULL != open_lora_tx_thread_index )
+    {
+        rt_thread_startup(open_lora_tx_thread_index);
+        rt_kprintf("open_lora_tx_thread_creat success \n");
+    }
+    else
+    {
+        rt_kprintf("open_lora_tx_thread_creat fail \n");
+    }
+
+
+
+
+
+
+
+
+    /* 测试lwip_udp */
+#if( DEBUG_LWIP == 1)                                                       
+
+    udp_test_thread_index = rt_thread_create(    "udp_test_thread"     ,    // 创建lwip_udp线程
                                             udpserv_thread_entry ,
                                             RT_NULL ,
                                             2048 ,
@@ -274,7 +342,7 @@ int main(void)
                                             20 );
     if( RT_NULL != udp_test_thread_index )
     {
-        rt_thread_startup(udp_test_thread_index);                                 // 开启线程的调度
+        rt_thread_startup(udp_test_thread_index);                           // 开启线程的调度
         rt_kprintf("udp_test_thread_creat success \r\n ");
     }
     else
@@ -283,6 +351,9 @@ int main(void)
     }
 
 #endif
+
+
+
 
 
     return RT_EOK;

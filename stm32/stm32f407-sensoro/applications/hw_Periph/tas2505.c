@@ -487,7 +487,7 @@ static void i2c_tas2505_sample(int argc, char *argv[])
     tas2505_reg_write( TAS2505_REG_PAGE_SELECT , TAS2505_PAGE_0 );
     tas2505_reg_read( TAS2505_REG_DAC_OSR_2, &rev_data);
 
-    rt_kprintf(" rev_data = 0x%02x \n" , rev_data );
+    rt_kprintf("rev_data = 0x%02x \n" , rev_data );
 #endif
 }
 MSH_CMD_EXPORT(i2c_tas2505_sample, i2c tas2505 sample);                         // 导出到 msh 命令列表中

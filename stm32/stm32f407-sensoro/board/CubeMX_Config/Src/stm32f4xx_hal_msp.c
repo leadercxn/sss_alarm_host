@@ -542,7 +542,7 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
 //    HAL_NVIC_SetPriority(ETH_IRQn, 5, 0);
 //    HAL_NVIC_EnableIRQ(ETH_IRQn);
   /* USER CODE BEGIN ETH_MspInit 1 */
-    rt_kprintf(" HAL_ETH_MspInit finish \r\n");
+    rt_kprintf("HAL_ETH_MspInit finish \r\n");
   /* USER CODE END ETH_MspInit 1 */
   }
 }
