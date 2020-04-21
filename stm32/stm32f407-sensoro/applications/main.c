@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <string.h>
+
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <board.h>
@@ -27,6 +30,7 @@ static rt_thread_t button_thread_index = RT_NULL;
 static rt_thread_t open_lora_rx_thread_index = RT_NULL;
 static rt_thread_t open_lora_tx_thread_index = RT_NULL;
 static rt_thread_t uart3_rx_thread_index = RT_NULL;
+static rt_thread_t parsing_alpha_data_thread_index = RT_NULL;
 /******************************* 线程优先级 ******************************/
 #define VOICE_THREAD_PRIORTY            5 
 #define INIT_THREAD_PRIORTY             6
@@ -35,6 +39,7 @@ static rt_thread_t uart3_rx_thread_index = RT_NULL;
 #define OPEN_LORA_TX_THREAD_PRIORTY     8
 #define UART_RX_THREAD_PRIORTY          3
 #define UDP_TEST_THREAD_PRIORTY         4
+#define PARSING_ALPHA_DATA_THREAD_PRIORTY 9
 /******************************* 锁 ******************************/
 static rt_mutex_t m_my_mux = RT_NULL ;
 
@@ -243,7 +248,7 @@ int main(void)
                                             5 );
     if( RT_NULL != button_thread_index )
     {
-        rt_thread_startup(button_thread_index);                             //开启线程的调度
+        rt_thread_startup(button_thread_index);                             
         rt_kprintf("button_thread_creat success \n");
     }
     else
@@ -252,7 +257,7 @@ int main(void)
     }
    
     /* 创建串口3接收的线程 */
-    uart3_rx_thread_index = rt_thread_create( "alpha_thread",                              
+    uart3_rx_thread_index = rt_thread_create( "alpha_rx_thread",                              
                                                     uart3_rx_thread_entry ,
                                                     RT_NULL,
                                                     512 ,
@@ -268,14 +273,29 @@ int main(void)
         rt_kprintf("uart3_rx_thread_creat fail \n");
     }
 
+    /* 创建解析alpha串口接收数据的线程 */
+    parsing_alpha_data_thread_index = rt_thread_create( "parsing_alpha_data_thread",                              
+                                                    parsing_rx_alpha_data ,
+                                                    RT_NULL,
+                                                    512 ,
+                                                    PARSING_ALPHA_DATA_THREAD_PRIORTY,
+                                                    20);
+    if( RT_NULL != parsing_alpha_data_thread_index )
+    {
+        rt_thread_startup(parsing_alpha_data_thread_index);
+        rt_kprintf("parsing_alpha_data_thread_creat success \n");
+    }
+    else
+    {
+        rt_kprintf("parsing_alpha_data_thread_creat fail \n");
+    }
+
+#if 0
     /* 打开lora接收 */
     static ser_alpha_open_rx_param_t ser_alpha_open_rx_param ;
     ser_alpha_open_rx_param.freq = 433 ;
     ser_alpha_open_rx_param.bandwidth = 0 ; 
     ser_alpha_open_rx_param.daterate = 7 ; 
-    ser_alpha_open_rx_param.coderate = 4 ; 
-    ser_alpha_open_rx_param.preamblelen = 8 ; 
-    ser_alpha_open_rx_param.symbtimeout = 100 ; 
     ser_alpha_open_rx_param.crcon = true ;
     ser_alpha_open_rx_param.iqinverted = false ;
     open_lora_rx_thread_index = rt_thread_create(    "open_lora_rx_thread"   ,      
@@ -301,13 +321,10 @@ int main(void)
     ser_alpha_open_tx_param.power = 0 ;
     ser_alpha_open_tx_param.bandwidth = 1 ;
     ser_alpha_open_tx_param.daterate = 6 ;
-    ser_alpha_open_tx_param.coderate = 3 ;
-    ser_alpha_open_tx_param.preamblelen =  8 ;
     ser_alpha_open_tx_param.crcon =  true ;
     ser_alpha_open_tx_param.iqinverted = false ;
-    ser_alpha_open_tx_param.timeout = 2000 ;
     ser_alpha_open_tx_param.tx_data_len = sizeof(tx_buf);
-    ser_alpha_open_tx_param.tx_data = tx_buf;
+    memcpy( ser_alpha_open_tx_param.tx_data , tx_buf , sizeof(tx_buf) );
     open_lora_tx_thread_index = rt_thread_create(    "open_lora_tx_thread"   ,      
                                             open_lora_tx_entry ,
                                             &ser_alpha_open_tx_param ,
@@ -324,8 +341,7 @@ int main(void)
         rt_kprintf("open_lora_tx_thread_creat fail \n");
     }
 
-
-
+#endif
 
 
 

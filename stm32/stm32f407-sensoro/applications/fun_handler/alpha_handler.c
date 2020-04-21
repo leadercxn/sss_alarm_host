@@ -11,18 +11,16 @@
 #endif
 
 #include <type.h>
+#include <usr_util.h>
 
 #include "SEGGER_RTT.h"
 
 
-//static struct rt_semaphore  m_rx_sem;                                       //创建接收用于接收消息的信号量
 static rt_sem_t m_rx_sem = RT_NULL;
-static rt_device_t          dev_uart3 = RT_NULL;                            //串口设备
+rt_device_t          dev_uart3 = RT_NULL;                            //串口设备
 struct serial_configure     uart3_config = RT_SERIAL_CONFIG_DEFAULT;        //串口配置
-
 static rt_err_t  uart_input( rt_device_t dev , rt_size_t size );            //函数声明
-
-static rt_mq_t              m_alpha_mq = RT_NULL ;                          //定义一个alpha的消息队列
+rt_mq_t              gp_alpha_rx_mq = RT_NULL ;                              //定义一个alpha的消息队列
 
 /**
  * @brief 串口3的初始化
@@ -34,12 +32,13 @@ static int dev_uart3_init(void)
     {
         rt_kprintf("can't find the uart3 \r\n");
     }
-    //rt_sem_init( &m_rx_sem , "m_rx_sem" , 0 ,RT_IPC_FLAG_FIFO );            //初始化静态信号量
     m_rx_sem = rt_sem_create("m_rx_sem", 0, RT_IPC_FLAG_FIFO);              //创建动态的信号量
-    m_alpha_mq = rt_mq_create("m_alpha_mq", sizeof(rt_uint8_t) , 512 , RT_IPC_FLAG_FIFO );    // 创建一个FIFO消息队列
-
+    gp_alpha_rx_mq = rt_mq_create("gp_alpha_rx_mq", 128 , 20 , RT_IPC_FLAG_FIFO );  // 创建一个FIFO消息队列
+    if( gp_alpha_rx_mq == RT_NULL )
+    {
+        rt_kprintf("message queue creat fail \n");
+    }
     uart3_config.baud_rate = BAUD_RATE_9600;                                //配置波特率
-
     rt_device_control( dev_uart3 , RT_DEVICE_CTRL_CONFIG , &uart3_config ); //配置串口
     rt_device_open( dev_uart3 , RT_DEVICE_FLAG_INT_RX );                    //中断接收模式 && 轮询发送模式
     rt_device_set_rx_indicate( dev_uart3 , uart_input );                    //设置接收回调函数
@@ -57,14 +56,17 @@ static rt_err_t  uart_input( rt_device_t dev , rt_size_t size )
     return RT_EOK;
 }
 
-
 /**
  * @brief 串口 中断接收模式 && 接收回调函数的用法
  */
 void uart3_rx_thread_entry(void *parameter)
 {
     rt_uint8_t ch  ;
-
+    bool rx_frame_pkg_done = true ; //一帧数据是否完成
+    rt_uint8_t rx_frame_pkg[128] ;
+    rt_uint8_t rx_frame_pkg_index = 0 ;
+    rt_uint16_t frame_pkg_len ;
+    rt_err_t err_code = RT_EOK;
     while(1)
     {
         while( 1 != rt_device_read( dev_uart3 , -1 , &ch ,1 ) )
@@ -74,8 +76,45 @@ void uart3_rx_thread_entry(void *parameter)
             //SEGGER_RTT_printf(0,"0x%02x\n",ch);           // 不要在这打印，会出现数据读取偏移的现象，没能好好理解
         }
         SEGGER_RTT_printf(0,"0x%02x\n",ch);
+        if( true == rx_frame_pkg_done  )                    //重新接收一帧数据
+        {
+            rx_frame_pkg_done = false ;
+            rx_frame_pkg_index = 0 ;
+            frame_pkg_len = 0 ;
+        }
+        rx_frame_pkg[rx_frame_pkg_index] = ch ;             //把数据存放在数组里
+        
+        if( rx_frame_pkg_index == sizeof(rt_uint16_t) )
+        {
+            frame_pkg_len = uint16_decode(rx_frame_pkg);
+            SEGGER_RTT_printf(0,"frame_pkg_len = %d \n", frame_pkg_len);
+        }
+        rx_frame_pkg_index ++ ;
+        if(( frame_pkg_len != 0 ) && (frame_pkg_len == (rx_frame_pkg_index - sizeof(rt_uint16_t)) ))  //根据接收到的数据长度来判断一帧数据是否接收完毕
+        {   
+                                           
+            err_code = rt_mq_send ( gp_alpha_rx_mq , &rx_frame_pkg[2] , frame_pkg_len);
+            if( (-RT_EFULL) == err_code )
+            {
+                SEGGER_RTT_printf(0,"alpha mq is full\n"); 
+            }
+            else if( (-RT_ERROR) == err_code )
+            {
+                SEGGER_RTT_printf(0,"send data to alpha mq fail \n"); 
+            }
+            else
+            {
+                SEGGER_RTT_printf(0,"finish a rx pkg && send data to alpha mq \n");   
+            }
+            rx_frame_pkg_done = true ; 
+        }
     }
 }
+
+
+
+
+
 
 
 
@@ -134,18 +173,16 @@ static int alpha_hexdata_test( int argc , char *argv[] )
     {
         sscanf( argv[i] , "%02x" , &send_buff[i-1] );       //注意格式
     }
-
+#if 0
     for( rt_uint8_t j = 0 ; j < (argc-1) ; j++ )
     {
         rt_kprintf("send_buff[%d] = %02x \n" , j ,send_buff[j] );
     }
-
-    send_szie = rt_device_write( dev_uart3 , 0 , send_buff , (i-1) );                   //发送字符串
+#endif
+    send_szie = rt_device_write( dev_uart3 , 0 , send_buff , (i-1) );                   //串口发送
 
     return ret ;
 }
-
-
 
 
 #ifdef FINSH_USING_MSH
@@ -154,7 +191,6 @@ static int alpha_hexdata_test( int argc , char *argv[] )
 MSH_CMD_EXPORT_ALIAS( alpha_cmd_test, alpha_cmd , send cmd to alpha chip by uart3 demo: alpha_cmd gpio );
 MSH_CMD_EXPORT_ALIAS( alpha_hexdata_test, alpha_hexdata , send hex-data to alpha chip by uart3 demo: alpha_hexdata 03 04 05 );
 #endif /* FINSH_USING_MSH */
-
 
 /**
  * @brief alpha芯片的串口通信测试

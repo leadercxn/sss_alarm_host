@@ -49,9 +49,6 @@ typedef struct
     rt_uint32_t freq ;
     rt_uint32_t bandwidth ;
     rt_uint32_t daterate  ;
-    rt_uint8_t  coderate ;
-    rt_uint16_t preamblelen ;
-    rt_uint16_t symbtimeout ;
     bool  crcon ;
     bool  iqinverted ;
 } __attribute__ ((__packed__)) ser_alpha_open_rx_param_t ;
@@ -65,13 +62,10 @@ typedef struct
     rt_int8_t   power;
     rt_uint32_t bandwidth ;
     rt_uint32_t daterate  ;
-    rt_uint8_t  coderate ;
-    rt_uint16_t preamblelen ;
     bool  crcon ;
     bool  iqinverted ;
-    rt_uint32_t timeout ;
-    rt_uint16_t tx_data_len ;
-    rt_uint8_t  *tx_data ;
+    rt_uint8_t  tx_data_len  ;
+    rt_uint8_t  tx_data[255] ;
 } __attribute__ ((__packed__)) ser_alpha_open_tx_param_t ;
 
 
