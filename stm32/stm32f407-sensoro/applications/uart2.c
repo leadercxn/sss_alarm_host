@@ -8,6 +8,7 @@
 #define UART2_NAME  "uart2"
 #endif
 
+#include "SEGGER_RTT.h"
 
 static struct rt_semaphore rx_sem;  // 创建接收用于接收消息的信号量
 static rt_device_t dev_uart2 ;
@@ -22,15 +23,18 @@ static int dev_uart2_init(void)
     
     rt_sem_init( &rx_sem , "rx_sem" , 0 ,RT_IPC_FLAG_FIFO );        //初始化信号量
 
-    rt_device_open( dev_uart2 , RT_DEVICE_FLAG_INT_RX );            //中断接收模式 && 轮询发送模式
+//    uart2_config.baud_rate = BAUD_RATE_9600;                                //配置波特率
 
+    rt_device_control( dev_uart2 , RT_DEVICE_CTRL_CONFIG , &uart2_config ); //配置串口
+
+    rt_device_open( dev_uart2 , RT_DEVICE_FLAG_INT_RX );            //中断接收模式 && 轮询发送模式
     rt_device_set_rx_indicate( dev_uart2 , uart_input );            //设置接收回调函数
 
     m_init_done = 1 ;
 
     rt_kprintf("dev_uart2_init success \r\n");
 }
-//INIT_COMPONENT_EXPORT(dev_uart2_init);                              // 导出到自动初始化 
+INIT_COMPONENT_EXPORT(dev_uart2_init);                              // 导出到自动初始化 
 
 
 /**
@@ -67,7 +71,8 @@ static int uart2_sample( int argc ,char *argv[] )
 {
     rt_err_t ret = RT_EOK;
     char uart_name[RT_NAME_MAX];
-    char str[] = "CAO NI MA\r\n";
+    //char str[] = "CAO NI MA\r\n";
+    rt_uint8_t str[] ={0x01 ,0x02 ,0x03 ,0x04};
 
     rt_size_t write_size =  0 ;
 
